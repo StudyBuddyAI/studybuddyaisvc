@@ -40,6 +40,10 @@ class TrainedModelList(Resource):
 
         return sbai.get_trained_model_list();
 
+class GetContextMemory(Resource):
+    def get(self):
+        return sbai.get_context_memory();
+
 class LoadTrainedModel(Resource):
     def get(self):
         path = request.args.get("path");
@@ -52,6 +56,9 @@ class LoadTrainedModel(Resource):
 class LoadTitleMatrix(Resource):
     def get(self):
         id = request.args.get("id");
+
+        # reset context memory
+        sbai.clear_context_memory();
 
         # Get all the context paragraphs
         dbcollection = db['paragraphs'];
@@ -66,6 +73,9 @@ class LoadTitleMatrix(Resource):
 
 class LoadAllTitleMatrix(Resource):
     def get(self):
+        # reset context memory
+        sbai.clear_context_memory();
+
         if sbai.all_tfidf_matrix == None:
             # Get all the context paragraphs
             dbcollection = db['paragraphs'];
@@ -88,25 +98,33 @@ class SubmitYourOwn(Resource):
 class SubmitQuestionForTitle(Resource):
     def post(self):
         id = request.args.get("id");
+        enable = request.args.get("enable");
         logger.log(id);
         data = request.json;
         logger.log(data);
+        check_context = False
+        if enable == 'true':
+            check_context = True
 
         # Get the question
         question = data['question']
 
-        return sbai.predict_for_title(question)
+        return sbai.predict_for_title(question,check_context=check_context)
 
 class SubmitQuestionForAllTitles(Resource):
     def post(self):
-
+        enable = request.args.get("enable");
         data = request.json;
         logger.log(data);
+
+        check_context = False
+        if enable == 'true':
+            check_context = True
 
         # Get the question
         question = data['question']
 
-        return sbai.predict_for_title(question,all=True)
+        return sbai.predict_for_title(question,all=True,check_context=check_context)
 
 # class ClassifyReview(Resource):
 #     def get(self):
@@ -229,6 +247,7 @@ api.add_resource(TrainedModelList, '/trained_model_list');
 api.add_resource(LoadTrainedModel, '/load_trained_model');
 api.add_resource(LoadTitleMatrix, '/load_title_matrix');
 api.add_resource(LoadAllTitleMatrix, '/load_all_title_matrix');
+api.add_resource(GetContextMemory, '/get_context_memory');
 api.add_resource(SubmitYourOwn, '/submit_your_own');
 api.add_resource(SubmitQuestionForTitle, '/submit_question_for_title');
 api.add_resource(SubmitQuestionForAllTitles, '/submit_question_for_all_titles');

@@ -40,11 +40,17 @@ class StudyBuddyAI:
         , {'name': 'ReTrained Model 5 (12/13/2017)', 'path': '../../allennlp/train_out/model05.tar.gz'}
     ]
 
+    # Context Memory Settings
+    context_memory_time = 1 # in minutes
+    context_memory_size = 5
+    context_memory = []
+    context_qa = []
+
     # Class StudyBuddyAI
     def __init__(self):
         self.logger.log("StudyBuddyAI ------------------------------------ Init")
         # Load pretrained model
-        self.load_trained_model('../../allennlp/train_out/model04.tar.gz')
+        self.load_trained_model('../../allennlp/train_out/model05.tar.gz')
 
     def get_trained_model_list(self):
         return self.trained_models;
@@ -55,6 +61,23 @@ class StudyBuddyAI:
         # predictor
         self.predictor = self.bidaf_model.predictor()
 
+    def save_in_context_memory(self,context):
+        # Save the context
+        self.context_memory.insert(0, context)
+        if len(self.context_memory) > self.context_memory_size:
+            # ensure our context list is limited
+            self.context_memory = self.context_memory[:self.context_memory_size]
+
+    def save_qa_in_context_memory(self,qa):
+        # Save the context
+        self.context_qa.insert(0, qa)
+
+    def clear_context_memory(self):
+        self.context_memory = []
+        self.context_qa = []
+
+    def get_context_memory(self):
+        return {'context_memory':self.context_memory,'context_qa':self.context_qa};
 
     def load_tfidf_vectorizer(self,context_list,all=False):
 
@@ -81,46 +104,101 @@ class StudyBuddyAI:
         self.logger.log(prediction);
         return prediction
 
-    def predict_for_title(self,question,all=False):
-        # Tokenize
-        tokens = self.tokenize_text(question)
-        cleaned_context_text = ' '.join(tokens)
-        if all == False:
-            question_vector = self.tfidf_vectorizer.transform([cleaned_context_text])
-        else:
-            question_vector = self.all_tfidf_vectorizer.transform([cleaned_context_text])
+    def predict_for_title(self,question,all=False,check_context=False):
 
-        # Find Cosine Similarity of question with the contexts
-        if all == False:
-            cs = cosine_similarity(question_vector, self.tfidf_matrix)
-        else:
-            cs = cosine_similarity(question_vector, self.all_tfidf_matrix)
-        #self.logger.log(cs)
-
-        cs_list = cs[0]
         passage = ''
-        idx = 0
-        threshold = 0.25
-        min_value = min(i for i in cs_list if i > 0.0)
-        max_value = max(cs_list)
-        range = max_value - min_value
-        threshold = max_value - range/3
-        for cs_val in cs_list:
-            if cs_val >= threshold:
-                if all == False:
-                    passage = passage + self.context_list[idx] + ' '
-                else:
-                    passage = passage + self.all_context_list[idx] + ' '
+        current_context_list = []
+        current_context_start_index = []
+        current_context_end_index = []
 
-            idx = idx + 1;
+        # if we need to look at the context only
+        if (check_context == True) and (len(self.context_memory) > 0):
+            # the top context item
+            current_context_list = self.context_memory[:1]
+        else:
+            # Tokenize
+            tokens = self.tokenize_text(question)
+            cleaned_context_text = ' '.join(tokens)
+            if all == False:
+                question_vector = self.tfidf_vectorizer.transform([cleaned_context_text])
+            else:
+                question_vector = self.all_tfidf_vectorizer.transform([cleaned_context_text])
+
+            # Find Cosine Similarity of question with the contexts
+            if all == False:
+                cs = cosine_similarity(question_vector, self.tfidf_matrix)
+            else:
+                cs = cosine_similarity(question_vector, self.all_tfidf_matrix)
+            self.logger.log(cs)
+
+            cs_list = cs[0]
+            idx = 0
+            threshold = 0.25
+
+            values_greater_than_zero = [i for i in cs_list if i > 0.0]
+            if len(values_greater_than_zero) == 0:
+                return {'status':0}
+            #     for ctx in self.context_memory:
+            #         current_context_start_index.append(len(passage))
+            #         passage = passage + ctx + ' '
+            #         current_context_list.append(ctx)
+            #         current_context_end_index.append(len(passage))
+            # else:
+
+            min_value = min(values_greater_than_zero)
+            max_value = max(cs_list)
+            range = max_value - min_value
+            threshold = max_value - range/3
+
+            for cs_val in cs_list:
+                if cs_val >= threshold:
+                    if all == False:
+                        current_context_list.append(self.context_list[idx])
+                    else:
+                        current_context_list.append(self.all_context_list[idx])
+
+                idx = idx + 1;
+
+        # build passage
+        for txt in current_context_list:
+            current_context_start_index.append(len(passage))
+            passage = passage + txt + ' '
+            current_context_end_index.append(len(passage))
 
         data = {}
         data['question'] = question
         data['passage'] = passage
 
+        # Build the return object
         result = {}
+        result['status'] = 1
         result['prediction'] = self.predict_from_passage(data)
-        result['passage'] = passage
+        result['current_context_list'] = current_context_list
+
+        # print(current_context_start_index)
+        # print(current_context_end_index)
+        # print(current_context_list)
+        # print(passage)
+
+        # Save the context from which answer was predicted from
+        # best_span = result['prediction']['best_span']
+        # for idx, ctx in enumerate(current_context_end_index):
+        #     if (best_span[0] >= current_context_start_index[idx]) and (best_span[1] <= current_context_end_index[idx]):
+        #         self.save_in_context_memory(current_context_list[idx],{'question':question,'answer':result['prediction']['best_span_str']})
+        #         result['current_context'] = current_context_list[idx]
+        #         continue;
+
+        best_span_str = result['prediction']['best_span_str']
+        for ctx in current_context_list:
+            if best_span_str in ctx:
+                self.save_in_context_memory(ctx)
+                self.save_qa_in_context_memory({'question': question, 'answer': best_span_str})
+                result['current_context'] = ctx
+                continue;
+
+        # return the current context memory
+        result['context_memory'] = self.context_memory
+        result['context_qa'] = self.context_qa
 
         return result
 

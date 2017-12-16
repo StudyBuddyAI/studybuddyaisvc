@@ -7,10 +7,10 @@ print("Start.... test")
 # Machine Comprehension (MC) models answer natural language questions by selecting an answer span within an evidence text.
 # The AllenNLP MC model is a reimplementation of BiDAF (Seo et al, 2017), or Bi-Directional Attention Flow
 # , a widely used MC baseline that achieves near state-of-the-art accuracies on the SQuAD dataset.
-#bidaf_model = DemoModel('../../allennlp/bidaf-model-2017.09.15-charpad.tar.gz','machine-comprehension')
+bidaf_model = DemoModel('../../allennlp/train_out/bidaf-model-2017.09.15-charpad.tar.gz','machine-comprehension')
 #bidaf_model = DemoModel('../../allennlp/train_out/model01.tar.gz','machine-comprehension')
 #bidaf_model = DemoModel('../../allennlp/train_out/model02.tar.gz','machine-comprehension')
-bidaf_model = DemoModel('../../allennlp/train_out/model04.tar.gz','machine-comprehension')
+#bidaf_model = DemoModel('../../allennlp/train_out/model04.tar.gz','machine-comprehension')
 
 # predictor
 predictor = bidaf_model.predictor()
@@ -32,6 +32,9 @@ data = {
 }
 prediction = predictor.predict_json(data)
 print(prediction)
+
+print(data['passage'])
+print(data['question'])
 print(prediction['best_span_str'])
 
 
